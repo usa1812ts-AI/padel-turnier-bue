@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Padel Turnier – 21. März 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0a0f1a; color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+  input:focus, button:focus { outline: none; }
+  button { -webkit-tap-highlight-color: transparent; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+<script>
+const { useState, useCallback, createElement: h } = React;
+
+// ─── Config ───
+const COURTS = 3;
+const ROUNDS = 5;
+
+const SCHEDULE = [
+  { time: "18:00–18:10", label: "Ankommen & Begrüßung", type: "break" },
+  { time: "18:10–18:20", label: "Aufwärmen", type: "warmup" },
+  { time: "18:20–18:32", label: "Runde 1", type: "round", round: 0 },
+  { time: "18:32–18:37", label: "Pause & Umlosung", type: "break" },
+  { time: "18:37–18:49", label: "Runde 2", type: "round", round: 1 },
+  { time: "18:49–18:54", label: "Pause & Umlosung", type: "break" },
+  { time: "18:54–19:06", label: "Runde 3", type: "round", round: 2 },
+  { time: "19:06–19:11", label: "Pause & Umlosung", type: "break" },
+  { time: "19:11–19:23", label: "Runde 4", type: "round", round: 3 },
+  { time: "19:23–19:28", label: "Pause & Umlosung", type: "break" },
+  { time: "19:28–19:40", label: "Runde 5", type: "round", round: 4 },
+  { time: "19:40–19:50", label: "Halbfinale vorbereiten", type: "break" },
+  { time: "19:50–20:00", label: "Finale", type: "finale" },
+];
+
+const DEFAULT_NAMES = [
+  "Spieler 1","Spieler 2","Spieler 3","Spieler 4",
+  "Spieler 5","Spieler 6","Spieler 7","Spieler 8",
+  "Spieler 9","Spieler 10","Spieler 11","Spieler 12",
+];
+
+const C = {
+  bg:"#0a0f1a", card:"#111827", cardLight:"#1a2236",
+  accent:"#22d3ee", accentDim:"rgba(34,211,238,0.15)",
+  gold:"#fbbf24", silver:"#94a3b8", bronze:"#d97706",
+  green:"#34d399", red:"#f87171",
+  text:"#e2e8f0", textDim:"#64748b", white:"#ffffff", border:"#1e293b",
+};
+
+// ─── Logic ───
+function generatePairings(players) {
+  const n = players.length;
+  const allRounds = [];
+  const history = {};
+  players.forEach((_, i) => { history[i] = new Set(); });
+  for (let r = 0; r < ROUNDS; r++) {
+    let best = null, bestScore = Infinity;
+    for (let a = 0; a < 200; a++) {
+      const sh = [...Array(n).keys()].sort(() => Math.random() - 0.5);
+      const matches = [];
+      for (let m = 0; m < COURTS; m++) {
+        matches.push({
+          court: m+1,
+          teamA: [sh[m*4], sh[m*4+1]],
+          teamB: [sh[m*4+2], sh[m*4+3]],
+          scoreA: 0, scoreB: 0, submitted: false,
+        });
+      }
+      let sc = 0;
+      matches.forEach(mt => {
+        if (history[mt.teamA[0]].has(mt.teamA[1])) sc += 10;
+        if (history[mt.teamB[0]].has(mt.teamB[1])) sc += 10;
+      });
+      if (sc < bestScore) { bestScore = sc; best = matches; }
+      if (sc === 0) break;
+    }
+    best.forEach(mt => {
+      history[mt.teamA[0]].add(mt.teamA[1]);
+      history[mt.teamA[1]].add(mt.teamA[0]);
+      history[mt.teamB[0]].add(mt.teamB[1]);
+      history[mt.teamB[1]].add(mt.teamB[0]);
+    });
+    allRounds.push(best);
+  }
+  return allRounds;
+}
+
+function validateScore(a, b) {
+  if (a === 0 && b === 0) return { valid: true, error: "" };
+  if (a < 12 && b < 12 && a <= 12 && b <= 12) return { valid: true, error: "" };
+  if (a === 12 && b <= 11) return { valid: true, error: "" };
+  if (b === 12 && a <= 11) return { valid: true, error: "" };
+  if (a >= 11 && b >= 11) {
+    const d = Math.abs(a - b);
+    if (d === 2) return { valid: true, error: "" };
+    if (d === 0) return { valid: true, error: "Gleichstand – weiterspielen bis 2 Pkt. Unterschied" };
+    if (d === 1) return { valid: true, error: "Nur 1 Punkt Unterschied – 2 Pkt. Differenz nötig" };
+    return { valid: false, error: "Ungültig: Ab 11:11 mit exakt 2 Pkt. Unterschied gewinnen" };
+  }
+  if (a > 12 || b > 12) return { valid: false, error: "Max. 12 Punkte (außer ab 11:11)" };
+  return { valid: true, error: "" };
+}
+
+function isDecided(a, b) {
+  if (a === 0 && b === 0) return false;
+  if (a === 12 && b <= 11) return true;
+  if (b === 12 && a <= 11) return true;
+  if (a >= 11 && b >= 11 && Math.abs(a - b) === 2) return true;
+  return false;
+}
+
+// ─── Components ───
+
+function PlayerSetup({ names, setNames, onStart }) {
+  return h("div", { style: { padding: 16, maxWidth: 500, margin: "0 auto" } },
+    h("div", { style: {
+      textAlign: "center", marginBottom: 28,
+      background: "linear-gradient(135deg, " + C.accentDim + ", transparent)",
+      borderRadius: 16, padding: "28px 16px", border: "1px solid " + C.border,
+    }},
+      h("div", { style: { fontSize: 13, letterSpacing: 4, color: C.accent, marginBottom: 6, fontWeight: 600 } }, "PADEL TURNIER"),
+      h("div", { style: { fontSize: 26, fontWeight: 800, color: C.white } }, "21. März 2026"),
+      h("div", { style: { fontSize: 13, color: C.textDim, marginTop: 6 } }, "18:00 – 20:00 Uhr · 3 Plätze · 12 Spieler"),
+    ),
+    h("div", { style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 } }, "Spielernamen eintragen:"),
+    h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+      names.map((name, i) =>
+        h("div", { key: i, style: { position: "relative" } },
+          h("span", { style: {
+            position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+            fontSize: 11, color: C.accent, fontWeight: 700, width: 20, textAlign: "center",
+          }}, i + 1),
+          h("input", {
+            value: name,
+            onChange: (e) => { const n = [...names]; n[i] = e.target.value; setNames(n); },
+            placeholder: "Spieler " + (i + 1),
+            style: {
+              width: "100%", boxSizing: "border-box", padding: "10px 10px 10px 34px",
+              background: C.cardLight, border: "1px solid " + C.border,
+              borderRadius: 8, color: C.white, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+            },
+            onFocus: (e) => { e.target.style.borderColor = C.accent; },
+            onBlur: (e) => { e.target.style.borderColor = C.border; },
+          }),
+        )
+      )
+    ),
+    h("button", {
+      onClick: onStart,
+      style: {
+        width: "100%", marginTop: 20, padding: 14,
+        background: "linear-gradient(135deg, " + C.accent + ", #06b6d4)",
+        border: "none", borderRadius: 10, color: C.bg,
+        fontSize: 15, fontWeight: 800, cursor: "pointer", letterSpacing: 1,
+        fontFamily: "'DM Sans', sans-serif",
+      },
+    }, "TURNIER STARTEN ▶"),
+  );
+}
+
+function ScoreInput({ match, names, onScore }) {
+  const tA = match.teamA.map(i => names[i]).join(" & ");
+  const tB = match.teamB.map(i => names[i]).join(" & ");
+  const { valid, error } = validateScore(match.scoreA, match.scoreB);
+  const decided = isDecided(match.scoreA, match.scoreB);
+  const getMax = (t, o) => (o >= 11 && t >= 11) ? o + 2 : 12;
+
+  const iStyle = (win) => ({
+    width: 56, textAlign: "center", padding: "8px 4px",
+    background: C.card, border: "1px solid " + (win ? C.green : !valid ? C.red : C.border),
+    borderRadius: 8, color: win ? C.green : C.white,
+    fontSize: 22, fontWeight: 800, fontFamily: "'DM Sans', sans-serif",
+    transition: "border 0.2s, color 0.2s",
+  });
+
+  const borderColor = match.submitted ? C.green : !valid ? C.red : decided ? C.green + "60" : C.border;
+
+  return h("div", { style: {
+    background: C.cardLight, borderRadius: 12, padding: 14,
+    border: "1px solid " + borderColor, marginBottom: 10, transition: "border 0.3s",
+  }},
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+      h("div", { style: { fontSize: 11, color: C.accent, fontWeight: 700, letterSpacing: 2 } }, "PLATZ " + match.court),
+      decided && !match.submitted ? h("div", { style: { fontSize: 10, color: C.green, fontWeight: 600 } }, "✓ Entschieden") : null,
+    ),
+    h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+      h("div", { style: { flex: 1, textAlign: "center" } },
+        h("div", { style: { fontSize: 13, color: C.text, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 } }, tA),
+        h("input", {
+          type: "number", min: 0, max: getMax(match.scoreA, match.scoreB),
+          value: match.scoreA || "",
+          onChange: (e) => onScore("A", Math.max(0, parseInt(e.target.value) || 0)),
+          disabled: match.submitted,
+          style: iStyle(decided && match.scoreA > match.scoreB),
+        }),
+      ),
+      h("div", { style: { fontSize: 18, color: C.textDim, fontWeight: 700 } }, "vs"),
+      h("div", { style: { flex: 1, textAlign: "center" } },
+        h("div", { style: { fontSize: 13, color: C.text, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 } }, tB),
+        h("input", {
+          type: "number", min: 0, max: getMax(match.scoreB, match.scoreA),
+          value: match.scoreB || "",
+          onChange: (e) => onScore("B", Math.max(0, parseInt(e.target.value) || 0)),
+          disabled: match.submitted,
+          style: iStyle(decided && match.scoreB > match.scoreA),
+        }),
+      ),
+    ),
+    error ? h("div", { style: {
+      textAlign: "center", fontSize: 11, marginTop: 6, fontWeight: 600, padding: "4px 8px",
+      borderRadius: 6, color: valid ? C.gold : C.red,
+      background: valid ? C.gold + "15" : C.red + "15",
+    }}, error) : null,
+    match.submitted ? h("div", { style: { textAlign: "center", fontSize: 11, color: C.green, marginTop: 6, fontWeight: 600 } }, "✓ Ergebnis gespeichert") : null,
+  );
+}
+
+function Ranking({ names, rounds }) {
+  const pts = names.map((_, i) => {
+    let tp = 0, w = 0, p = 0;
+    rounds.forEach(rd => rd.forEach(m => {
+      if (!m.submitted) return;
+      const inA = m.teamA.includes(i), inB = m.teamB.includes(i);
+      if (!inA && !inB) return;
+      p++;
+      if (inA) { tp += m.scoreA; if (m.scoreA > m.scoreB) w++; }
+      else { tp += m.scoreB; if (m.scoreB > m.scoreA) w++; }
+    }));
+    return { index: i, name: names[i], tp, w, p };
+  });
+  pts.sort((a, b) => b.w - a.w || b.tp - a.tp);
+  const mc = [C.gold, C.silver, C.bronze];
+
+  return h("div", { style: { padding: "0 16px" } },
+    h("div", { style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 10 } }, "🏆 Live-Rangliste"),
+    pts.map((p, r) =>
+      h("div", { key: p.index, style: {
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "8px 12px", marginBottom: 4,
+        background: r < 3 ? mc[r] + "15" : C.cardLight,
+        borderRadius: 8, borderLeft: r < 3 ? "3px solid " + mc[r] : "3px solid transparent",
+      }},
+        h("div", { style: {
+          width: 24, height: 24, borderRadius: "50%",
+          background: r < 3 ? mc[r] : C.border,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 12, fontWeight: 800, color: r < 3 ? C.bg : C.textDim, flexShrink: 0,
+        }}, r + 1),
+        h("div", { style: { flex: 1, fontSize: 14, fontWeight: 600, color: C.text } }, p.name),
+        h("div", { style: { textAlign: "right" } },
+          h("span", { style: { fontSize: 14, fontWeight: 800, color: C.accent } }, p.w + "W"),
+          h("span", { style: { fontSize: 12, color: C.textDim, marginLeft: 6 } }, p.tp + " Pkt"),
+        ),
+      )
+    ),
+  );
+}
+
+function TimelineBar({ activeRound }) {
+  return h("div", { style: {
+    display: "flex", gap: 3, padding: "12px 16px", overflowX: "auto",
+    background: C.card, borderBottom: "1px solid " + C.border,
+  }},
+    SCHEDULE.map((item, i) => {
+      const isActive = item.type === "round" && item.round === activeRound;
+      const isDone = item.type === "round" && item.round < activeRound;
+      return h("div", { key: i, style: {
+        flex: (item.type === "round" || item.type === "finale") ? 2 : 1,
+        height: 6, borderRadius: 3, minWidth: 12, transition: "background 0.3s",
+        background: isActive ? C.accent : isDone ? C.green : item.type === "break" ? C.border : C.accent + "30",
+      }});
+    }),
+  );
+}
+
+function ScheduleTab({ activeRound, phase }) {
+  return h("div", { style: { padding: "0 16px" } },
+    SCHEDULE.map((item, i) => {
+      const isNow = item.type === "round" && item.round === activeRound && phase === "tournament";
+      return h("div", { key: i, style: {
+        display: "flex", gap: 12, padding: "10px 0",
+        borderBottom: "1px solid " + C.border,
+        opacity: (item.type === "round" && item.round < activeRound) ? 0.4 : 1,
+      }},
+        h("div", { style: { width: 80, fontSize: 12, color: isNow ? C.accent : C.textDim, fontWeight: 600, flexShrink: 0, paddingTop: 2 } }, item.time),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          h("div", { style: {
+            width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+            background: isNow ? C.accent : (item.type === "round" && item.round < activeRound) ? C.green : item.type === "break" ? C.border : C.accent + "40",
+          }}),
+          h("div", { style: { fontSize: 14, color: isNow ? C.white : C.text, fontWeight: isNow ? 700 : 500 } },
+            item.label,
+            isNow ? h("span", { style: { fontSize: 11, color: C.accent, marginLeft: 6 } }, "← JETZT") : null,
+          ),
+        ),
+      );
+    }),
+  );
+}
+
+// ─── Main App ───
+function App() {
+  const [phase, setPhase] = useState("setup");
+  const [names, setNames] = useState([...DEFAULT_NAMES]);
+  const [rounds, setRounds] = useState([]);
+  const [activeRound, setActiveRound] = useState(0);
+  const [tab, setTab] = useState("matches");
+
+  const startTournament = useCallback(() => {
+    const filled = names.map((n, i) => n.trim() || "Spieler " + (i + 1));
+    setNames(filled);
+    setRounds(generatePairings(filled));
+    setPhase("tournament");
+  }, [names]);
+
+  const updateScore = (ri, mi, team, val) => {
+    setRounds(prev => prev.map((r, idx) =>
+      idx === ri ? r.map((m, midx) =>
+        midx === mi ? { ...m, [team === "A" ? "scoreA" : "scoreB"]: val } : m
+      ) : r
+    ));
+  };
+
+  const submitRound = (ri) => {
+    setRounds(prev => prev.map((r, idx) =>
+      idx === ri ? r.map(m => ({ ...m, submitted: true })) : r
+    ));
+    if (ri < ROUNDS - 1) { setActiveRound(ri + 1); setTab("matches"); }
+    else { setPhase("done"); setTab("ranking"); }
+  };
+
+  const cur = rounds[activeRound] || [];
+  const allOk = cur.every(m => isDecided(m.scoreA, m.scoreB) && validateScore(m.scoreA, m.scoreB).valid);
+
+  if (phase === "setup") {
+    return h(PlayerSetup, { names, setNames, onStart: startTournament });
+  }
+
+  const tabBtn = (key, label) => h("button", {
+    onClick: () => setTab(key),
+    style: {
+      flex: 1, padding: "8px 0",
+      background: tab === key ? C.accentDim : "transparent",
+      border: "1px solid " + (tab === key ? C.accent : C.border),
+      borderRadius: 8, color: tab === key ? C.accent : C.textDim,
+      fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+    },
+  }, label);
+
+  return h("div", { style: { maxWidth: 500, margin: "0 auto", paddingBottom: 80 } },
+    h(TimelineBar, { activeRound }),
+
+    // Header
+    h("div", { style: { padding: "14px 16px 6px", display: "flex", justifyContent: "space-between", alignItems: "baseline" } },
+      h("div", null,
+        h("span", { style: { fontSize: 18, fontWeight: 800, color: C.white } },
+          phase === "done" ? "Turnier beendet!" : "Runde " + (activeRound + 1)),
+        h("span", { style: { fontSize: 12, color: C.textDim, marginLeft: 8 } },
+          phase === "done" ? "🏆" : "von " + ROUNDS),
+      ),
+    ),
+
+    // Tabs
+    h("div", { style: { display: "flex", gap: 4, padding: "6px 16px 12px" } },
+      tabBtn("matches", "Spiele"), tabBtn("ranking", "Rangliste"), tabBtn("schedule", "Zeitplan"),
+    ),
+
+    // Matches
+    tab === "matches" && phase !== "done" ? h("div", { style: { padding: "0 16px" } },
+      cur.map((m, mi) => h(ScoreInput, {
+        key: activeRound + "-" + mi, match: m, names,
+        onScore: (team, val) => updateScore(activeRound, mi, team, val),
+      })),
+      !cur[0]?.submitted ? h("button", {
+        onClick: () => submitRound(activeRound), disabled: !allOk,
+        style: {
+          width: "100%", marginTop: 8, padding: 13,
+          background: allOk ? "linear-gradient(135deg, " + C.green + ", #10b981)" : C.border,
+          border: "none", borderRadius: 10,
+          color: allOk ? C.bg : C.textDim,
+          fontSize: 14, fontWeight: 700, cursor: allOk ? "pointer" : "default",
+          fontFamily: "'DM Sans', sans-serif",
+        },
+      }, activeRound < ROUNDS - 1 ? "ERGEBNISSE BESTÄTIGEN → NÄCHSTE RUNDE" : "LETZTE RUNDE BESTÄTIGEN") : null,
+      activeRound > 0 ? h("div", { style: { marginTop: 16 } },
+        h("div", { style: { fontSize: 12, color: C.textDim, marginBottom: 6, fontWeight: 600 } }, "Vorherige Runden:"),
+        h("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+          rounds.slice(0, activeRound).map((_, ri) =>
+            h("button", {
+              key: ri, onClick: () => setActiveRound(ri),
+              style: {
+                padding: "6px 14px", background: C.cardLight,
+                border: "1px solid " + C.border, borderRadius: 6,
+                color: C.green, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              },
+            }, "Runde " + (ri + 1) + " ✓")
+          ),
+        ),
+      ) : null,
+    ) : null,
+
+    // Done state
+    tab === "matches" && phase === "done" ? h("div", { style: { padding: "20px 16px", textAlign: "center" } },
+      h("div", { style: { fontSize: 48, marginBottom: 12 } }, "🏆"),
+      h("div", { style: { fontSize: 16, color: C.textDim } }, "Alle Runden gespielt! Schau in die Rangliste."),
+    ) : null,
+
+    // Ranking
+    tab === "ranking" ? h(Ranking, { names, rounds }) : null,
+
+    // Schedule
+    tab === "schedule" ? h(ScheduleTab, { activeRound, phase }) : null,
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>
